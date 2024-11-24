@@ -159,7 +159,7 @@ if __name__ == "__main__":
     print("Embedding port 677889:", tokenizer.get_embedding(677889))
 
     ##########
-    # tets port tokenizer
+    # tets IP tokenizer
     ##########
 
     # cache_file = "resources/NameIpCacheFile.json"
