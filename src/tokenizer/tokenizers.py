@@ -72,6 +72,11 @@ class IPTokenizer:
             json.dump(self.name_ip_cache, f, indent=4)
 
 
+class DNSNameEmbedding:
+    pass
+
+
+
 class PortTokenizer:
     def __init__(self, ports=None, embedding_dim=10, file_path=None):
         """
@@ -140,23 +145,34 @@ class PortTokenizer:
 
 if __name__ == "__main__":
 
+
+    cache_file = "resources/NameIpCacheFile.json"
+    tokenizer = IPTokenizer(cache_file)
+
+    ip = "8.8.8.8" # google
+    result = tokenizer.ip2name(ip)
+    print(f"Resolved {ip}: {result}")
+
+    dns_embedding_generator = DNSNameEmbedding()
+    # TO COMPLETE
+
     ##########
     # test port tokenizer
     ##########
 
-    ports = [
-        20, 21, 22, 23, 25, 53, 67, 68, 80, 110, 123, 135, 137, 138, 139, 143,
-        161, 194, 389, 443, 465, 548, 587, 636, 902, 993, 995, 1080, 1433, 1434,
-        1521, 1720, 1723, 1812, 1813, 1883, 2049, 25565, 27017, 31337, 3306, 3389,
-        44444, 5060, 5432, 5800, 5900, 8080, 8443, 10000, 11211, 20000, 55555
-    ] # list of most common ports
-    tokenizer = PortTokenizer(ports=ports, embedding_dim=10, file_path="resources/port_embeddings.json")
-    print("Embedding port 80:", tokenizer.get_embedding(80))
+    # ports = [
+    #     20, 21, 22, 23, 25, 53, 67, 68, 80, 110, 123, 135, 137, 138, 139, 143,
+    #     161, 194, 389, 443, 465, 548, 587, 636, 902, 993, 995, 1080, 1433, 1434,
+    #     1521, 1720, 1723, 1812, 1813, 1883, 2049, 25565, 27017, 31337, 3306, 3389,
+    #     44444, 5060, 5432, 5800, 5900, 8080, 8443, 10000, 11211, 20000, 55555
+    # ] # list of most common ports
+    # tokenizer = PortTokenizer(ports=ports, embedding_dim=10, file_path="resources/port_embeddings.json")
+    # print("Embedding port 80:", tokenizer.get_embedding(80))
 
-    tokenizer = PortTokenizer(file_path="resources/port_embeddings.json")
-    print("Embedding port 443:", tokenizer.get_embedding(443))
-    print("Embedding port 677889:", tokenizer.get_embedding(677889))
-    print("Embedding port 677889:", tokenizer.get_embedding(677889))
+    # tokenizer = PortTokenizer(file_path="resources/port_embeddings.json")
+    # print("Embedding port 443:", tokenizer.get_embedding(443))
+    # print("Embedding port 677889:", tokenizer.get_embedding(677889))
+    # print("Embedding port 677889:", tokenizer.get_embedding(677889))
 
     ##########
     # tets IP tokenizer
@@ -165,7 +181,7 @@ if __name__ == "__main__":
     # cache_file = "resources/NameIpCacheFile.json"
     # tokenizer = IPTokenizer(cache_file)
     
-    # ip = "8.8.8.8" # gogle
+    # ip = "8.8.8.8" # google
     # result = tokenizer.ip2name(ip)
     # print(f"Resolved {ip}: {result}")
 
