@@ -98,76 +98,94 @@ class DNSNameEmbedding(nn.Module):
         return dns_embedding
 
 
-class PortTokenizer:
-    def __init__(self, ports=None, embedding_dim=10, file_path=None):
-        """
-        Initializes the PortTokenizer. Loads embeddings from the provided file if it exists;
-        otherwise, computes embeddings for the given ports and saves them to the file.
-        **** embedding here is actually a multidimesnional ID because it is not learned and could be replaced by a simple ID (and then there should be an UNKNOWNED IP ID)
-        """
-        self.embedding_dim = embedding_dim
-        self.file_path = file_path
+# class PortTokenizer:
+#     def __init__(self, ports=None, embedding_dim=10, file_path=None):
+#         """
+#         Initializes the PortTokenizer. Loads embeddings from the provided file if it exists;
+#         otherwise, computes embeddings for the given ports and saves them to the file.
+#         **** embedding here is actually a multidimesnional ID because it is not learned and could be replaced by a simple ID (and then there should be an UNKNOWNED IP ID)
+#         """
+#         self.embedding_dim = embedding_dim
+#         self.file_path = file_path
 
-        # Validate input
-        if file_path and os.path.exists(file_path):
-            self.load_embeddings()
-        elif ports: # if no file is provided, compute the embeddings for the given ports
-            self.ports = ports
-            self.port_to_idx = {port: idx for idx, port in enumerate(self.ports)} # there is a need for port-index mapping
-            self.embedding_layer = nn.Embedding(len(self.ports), self.embedding_dim)
-            self.save_embeddings()
-        else:
-            raise ValueError("Either 'ports' or 'file_path' must be provided.")
+#         # Validate input
+#         if file_path and os.path.exists(file_path):
+#             self.load_embeddings()
+#         elif ports: # if no file is provided, compute the embeddings for the given ports
+#             self.ports = ports
+#             self.port_to_idx = {port: idx for idx, port in enumerate(self.ports)} # there is a need for port-index mapping
+#             self.embedding_layer = nn.Embedding(len(self.ports), self.embedding_dim)
+#             self.save_embeddings()
+#         else:
+#             raise ValueError("Either 'ports' or 'file_path' must be provided.")
         
-        self.embedding_layer.requires_grad_ = False
+#         self.embedding_layer.requires_grad_ = False
 
-    def _hash_unknowned_ports(self, port, scale=0.1):
-        """
-        Generates a deterministic embedding vector for a given port using its hash.
-        """
-        hash_value = hashlib.md5(str(port).encode()).hexdigest()
+#     def _hash_unknowned_ports(self, port, scale=0.1):
+#         """
+#         Generates a deterministic embedding vector for a given port using its hash.
+#         """
+#         hash_value = hashlib.md5(str(port).encode()).hexdigest()
         
-        hash_as_ints = [int(hash_value[i:i+2], 16) for i in range(0, len(hash_value), 2)]
+#         hash_as_ints = [int(hash_value[i:i+2], 16) for i in range(0, len(hash_value), 2)]
 
-        hash_as_floats = np.array(hash_as_ints[:self.embedding_dim]) / 255.0  # Scale to [0, 1]
-        hash_as_floats = (hash_as_floats * 2) - 1  # Scale to [-1, 1]
+#         hash_as_floats = np.array(hash_as_ints[:self.embedding_dim]) / 255.0  # Scale to [0, 1]
+#         hash_as_floats = (hash_as_floats * 2) - 1  # Scale to [-1, 1]
         
-        embedding = torch.tensor(hash_as_floats * scale, dtype=torch.float)
+#         embedding = torch.tensor(hash_as_floats * scale, dtype=torch.float)
         
-        return embedding
+#         return embedding
 
-    def save_embeddings(self):
-        embeddings = {}
-        for port, idx in self.port_to_idx.items():
-            embeddings[port] = self.embedding_layer(torch.tensor(idx)).detach().tolist()
+#     def save_embeddings(self):
+#         embeddings = {}
+#         for port, idx in self.port_to_idx.items():
+#             embeddings[port] = self.embedding_layer(torch.tensor(idx)).detach().tolist()
 
-        with open(self.file_path, 'w') as f:
-            json.dump(embeddings, f, indent=4)
+#         with open(self.file_path, 'w') as f:
+#             json.dump(embeddings, f, indent=4)
 
-    def load_embeddings(self):
-        if not self.file_path:
-            raise ValueError("No file path provided for loading embeddings.")
+#     def load_embeddings(self):
+#         if not self.file_path:
+#             raise ValueError("No file path provided for loading embeddings.")
 
-        with open(self.file_path, 'r') as f:
-            embeddings = json.load(f)
+#         with open(self.file_path, 'r') as f:
+#             embeddings = json.load(f)
 
-        # Ports and their indices
-        self.ports = list(map(int, embeddings.keys()))
-        self.port_to_idx = {port: idx for idx, port in enumerate(self.ports)}
+#         # Ports and their indices
+#         self.ports = list(map(int, embeddings.keys()))
+#         self.port_to_idx = {port: idx for idx, port in enumerate(self.ports)}
 
-        # Embedding layer
-        embedding_weights = torch.tensor([embeddings[str(port)] for port in self.ports])
-        self.embedding_layer = nn.Embedding.from_pretrained(embedding_weights)
-        print(f"Loaded embeddings from {self.file_path}")
+#         # Embedding layer
+#         embedding_weights = torch.tensor([embeddings[str(port)] for port in self.ports])
+#         self.embedding_layer = nn.Embedding.from_pretrained(embedding_weights)
+#         print(f"Loaded embeddings from {self.file_path}")
 
-        self.embedding_layer.requires_grad_ = False
+#         self.embedding_layer.requires_grad_ = False
 
-    def get_embedding(self, port):
-        if port not in self.port_to_idx:
-            return self._hash_unknowned_ports(port)
-        idx = self.port_to_idx[port]
-        return self.embedding_layer(torch.tensor(idx))
+#     def get_embedding(self, port):
+#         if port not in self.port_to_idx:
+#             return self._hash_unknowned_ports(port)
+#         idx = self.port_to_idx[port]
+#         return self.embedding_layer(torch.tensor(idx))
     
+
+class PortTokenizer:
+    def __init__(self, file_path: str, embedding_dim: int = 10):
+        self.embedding_dim = embedding_dim
+        self.unknown_port_idx = 0
+
+        with open(file_path, 'r') as f:
+            ports = list(map(int, json.load(f).keys()))
+
+        self.ports = ports
+        self.port_to_idx = {port: idx + 1 for idx, port in enumerate(self.ports)}  # Reserve 0 for unknown
+        self.embedding_layer = nn.Embedding(len(self.ports) + 1, self.embedding_dim)
+
+    def get_embedding(self, port: int):
+        idx = self.port_to_idx.get(port, self.unknown_port_idx)
+        return self.embedding_layer(torch.tensor(idx))
+
+
 def dns_to_char_indices(dns_name, char_to_idx):
     """
     Converts a DNS name into a list of character indices.
@@ -397,6 +415,7 @@ class InputNormalizer(nn.Module):
             torch.tensor([0]).to(self.device)
         ], dim=0)
 
+        #print('normalized_input.shape: ', normalized_input.shape)
 
         return normalized_input
 

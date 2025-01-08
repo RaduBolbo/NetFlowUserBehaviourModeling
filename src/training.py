@@ -67,8 +67,10 @@ def train_boolean_classificator(checkpoint_path=None):
     # )
 
     #lr = 1e-3
-    #lr = 1e-4 
-    lr = 1e-5
+    lr = 1e-4 
+    #lr = 1e-5
+    #lr = 1e-6
+    #lr = 1e-7
 
     device = 'cuda'
     #classifier_model = UserBooleanClassifier(input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10).to(device) # tried
@@ -86,46 +88,50 @@ def train_boolean_classificator(checkpoint_path=None):
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
+        true_positive = 0
+        false_positive = 0
+        false_negative = 0
+        true_negative = 0
 
         for user1_samples, user2_samples, targets in tqdm(train_dataset):
 
             logits_list = []
             targets_list = []
             for user1_sample, user2_sample, target in zip(user1_samples, user2_samples, targets):
-
-                logits = classifier_model(user1_sample, user2_sample) 
-                #print('logits.shappe: ', logits[0].shape)
+                logits = classifier_model(user1_sample, user2_sample)
                 logits_list.append(logits[0])
                 target_onehot = F.one_hot(torch.tensor([target]), num_classes=2).float().to(device)
-                #print(target_onehot.shape, 'opopopopopopopopo')
                 targets_list.append(target_onehot[0])
 
             batch_logits = torch.stack(logits_list)
             one_hot_targets = torch.stack(targets_list)
-            #loss = criterion(batch_logits, one_hot_targets) * **** 
-            #print('klklklklklklk ', torch.argmax(one_hot_targets, dim=1).shape)
             loss = criterion(batch_logits, torch.argmax(one_hot_targets, dim=1))
 
-
-            optimizer.zero_grad() 
-            loss.backward() 
-            optimizer.step() 
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
             total_loss += loss.item()
 
-            # compute acc
-            predictions = torch.argmax(batch_logits, dim=1) 
-            true_classes = torch.argmax(one_hot_targets, dim=1) 
+            predictions = torch.argmax(batch_logits, dim=1)
+            true_classes = torch.argmax(one_hot_targets, dim=1)
             total_correct += (predictions == true_classes).sum().item()
             total_samples += true_classes.size(0)
 
+            true_positive += ((predictions == 1) & (true_classes == 1)).sum().item()
+            false_positive += ((predictions == 1) & (true_classes == 0)).sum().item()
+            false_negative += ((predictions == 0) & (true_classes == 1)).sum().item()
+            true_negative += ((predictions == 0) & (true_classes == 0)).sum().item()
+
         epoch_accuracy = total_correct / total_samples
+        tpr = true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+        fpr = false_positive / (false_positive + true_negative) if (false_positive + true_negative) > 0 else 0
+
         print(f"Epoch Loss: {total_loss:.4f}, Epoch Accuracy: {epoch_accuracy:.4f}")
+        print(f"TPR: {tpr:.4f}, FPR: {fpr:.4f}")
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {(total_loss/(len(train_dataset) * examples_per_user)):.4f}")
-        # if epoch % 5 == 0:
-        #     torch.save(classifier_model.state_dict(), f"models/rnn/rnn_epoch={epoch}_loss_{{(total_loss/len(train_dataset)):.4f}}_acc_{epoch_accuracy}.pth") 
-        #     pass
-        torch.save(classifier_model.state_dict(), f"models/rnn/rnn_epoch={epoch}_loss_{total_loss/(len(train_dataset) * examples_per_user)}_acc_{epoch_accuracy}.pth") 
+
+        torch.save(classifier_model.state_dict(), f"models/rnn/rnn_epoch={epoch}_loss_{total_loss/(len(train_dataset) * examples_per_user)}_acc_{epoch_accuracy}.pth")
 
 
 if __name__ == '__main__':

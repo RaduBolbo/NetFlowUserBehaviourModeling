@@ -118,12 +118,40 @@ class UserEmbeddingExtractor(nn.Module):
 #         return logits
 
 
+# class FCNNAggregator(nn.Module):
+#     def __init__(self, input_dim, output_dim):
+#         super(FCNNAggregator, self).__init__()
+#         self.fc1 = nn.Linear(input_dim, output_dim)
+
+#     def forward(self, input_vectors):
+#         x = self.fc1(input_vectors)
+#         return x
+
+class FCNNAggregator(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(FCNNAggregator, self).__init__()
+        self.fc1 = nn.Linear(input_dim, output_dim//2)
+        self.relu = nn.PReLU()
+        self.fc2 = nn.Linear(output_dim//2, output_dim)
+
+    def forward(self, input_vectors):
+        x = self.fc1(input_vectors)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        return x
+
+
 class UserBooleanClassifier(nn.Module):
-    def __init__(self, device='cuda', input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10):
+    def __init__(self, device='cuda', input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10, aggregator_type='fcnn'):
         super(UserBooleanClassifier, self).__init__()
         self.input_normalizer_long_sequence = InputNormalizer(10, device)
         self.input_normalizer_short_sequence = InputNormalizer(10, device)
-        self.rnn_aggregator = RNNAggregator(50, 256, 2).to(device)
+        self.aggregator_type = aggregator_type
+        if aggregator_type == 'rnn':
+            self.aggregator = RNNAggregator(50, 256, 2).to(device)
+        elif aggregator_type == 'fcnn':
+            self.aggregator = FCNNAggregator(50, 256).to(device)
         self.long_sequence_skip = long_sequence_skip
 
         self.lstm_long_sequence = nn.LSTM(input_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
@@ -158,8 +186,17 @@ class UserBooleanClassifier(nn.Module):
             outputs = []
             for event in moment["content"]:
                 outputs.append(normalizer(event, moment['day_of_week'], int(moment['hour'].split(':')[0])))
-            outputs = torch.stack(outputs)
-            aggregated_features = self.rnn_aggregator(outputs.float())
+            
+            if self.aggregator_type == 'rnn':
+                outputs = torch.stack(outputs) # stack them and then send them to the aggregator
+                aggregated_features = self.aggregator(outputs.float())
+            elif self.aggregator_type == 'fcnn':
+                features = []
+                for output in outputs:
+                    features.append(self.aggregator(output.float())) # first send them to the agregator one at a time, then average them
+                
+                aggregated_features = torch.mean(torch.stack(features), dim=0)
+            
             feature_vectors.append(aggregated_features)
 
         feature_vector = torch.stack(feature_vectors)
@@ -173,6 +210,8 @@ class UserBooleanClassifier(nn.Module):
 
         #print('feature_vector1.shape: ', feature_vector1.shape)
         #print('feature_vector2.shape: ', feature_vector2.shape)
+        print('feature_vector1.shape: ',feature_vector1.shape)
+        print('feature_vector2.shape: ',feature_vector2.shape)
         feature_vector1 = feature_vector1.unsqueeze(0)  # Add batch dimension
         feature_vector2 = feature_vector2.unsqueeze(0)  # Add batch dimension
 
