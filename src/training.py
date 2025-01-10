@@ -20,7 +20,7 @@ def train_embedder():
 
     #lr = 1e-3
     #lr = 1e-4 # prost
-    lr = 1e-5
+    #lr = 1e-5
 
     device = 'cuda'
     classifier_model = UserEmbeddingExtractor().to(device)
@@ -66,8 +66,9 @@ def train_boolean_classificator(checkpoint_path=None):
     #     num_workers=4
     # )
 
-    #lr = 1e-3
-    lr = 1e-4 
+    # lr = 1
+    lr = 1e-3
+    #lr = 1e-4 
     #lr = 1e-5
     #lr = 1e-6
     #lr = 1e-7
@@ -98,6 +99,7 @@ def train_boolean_classificator(checkpoint_path=None):
             logits_list = []
             targets_list = []
             for user1_sample, user2_sample, target in zip(user1_samples, user2_samples, targets):
+                print('----- target: ', target)
                 logits = classifier_model(user1_sample, user2_sample)
                 logits_list.append(logits[0])
                 target_onehot = F.one_hot(torch.tensor([target]), num_classes=2).float().to(device)

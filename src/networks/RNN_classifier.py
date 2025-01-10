@@ -26,7 +26,7 @@ class UserEmbeddingExtractor(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_dim, 256),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(0.5),
             nn.Linear(256, self.num_classes)
         ) .to(device)
@@ -131,13 +131,17 @@ class FCNNAggregator(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(FCNNAggregator, self).__init__()
         self.fc1 = nn.Linear(input_dim, output_dim//2)
-        self.relu = nn.PReLU()
+        self.bn1 = nn.LayerNorm(output_dim//2)
+        self.relu = nn.LeakyReLU()
         self.fc2 = nn.Linear(output_dim//2, output_dim)
+        self.bn2 = nn.LayerNorm(output_dim)
 
     def forward(self, input_vectors):
         x = self.fc1(input_vectors)
+        x = self.bn1(x)
         x = self.relu(x)
         x = self.fc2(x)
+        x = self.bn2(x)
         x = self.relu(x)
         return x
 
@@ -150,22 +154,23 @@ class UserBooleanClassifier(nn.Module):
         self.input_normalizer_short_sequence = InputNormalizer(10, device)
         self.aggregator_type = aggregator_type
         #self.aggregator_dim = 256 # **** intiial
-        self.aggregator_dim = 4
+        self.aggregator_dim = 4 # *** itris the input_dim
         if aggregator_type == 'rnn':
             #self.aggregator = RNNAggregator(50, 256, 2).to(device) # original sizes
             self.aggregator = RNNAggregator(50, self.aggregator_dim, 2).to(device)
         elif aggregator_type == 'fcnn':
             #self.aggregator = FCNNAggregator(50, 256).to(device) # original sizes
-            self.aggregator = FCNNAggregator(6, 256).to(device)
+            self.aggregator = FCNNAggregator(6, self.aggregator_dim).to(device)
         self.long_sequence_skip = long_sequence_skip
 
-        self.lstm_long_sequence = nn.LSTM(input_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
-        self.lstm_short_sequence = nn.LSTM(input_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
+        self.lstm_long_sequence = nn.LSTM(self.aggregator_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
+        self.lstm_short_sequence = nn.LSTM(self.aggregator_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_dim * 2, self.aggregator_dim),
-            nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.LayerNorm(self.aggregator_dim),
+            nn.LeakyReLU(),
+            #nn.Dropout(0.5),
             nn.Linear(self.aggregator_dim, 2)  # boolobean classifier
         ).to(device)
 
@@ -184,12 +189,17 @@ class UserBooleanClassifier(nn.Module):
     def extract_features(self, content_user, normalizer, skip=0):
         feature_vectors = []
         
+        interfaces = {}
         for idx, moment in enumerate(content_user):
             if skip > 0 and idx % (skip) != 0:
                 continue
             
             outputs = []
             for event in moment["content"]:
+                if event["input_interface"] not in interfaces:
+                    interfaces[event["input_interface"]] = 1
+                else:
+                    interfaces[event["input_interface"]] += 1
                 outputs.append(normalizer(event, moment['day_of_week'], int(moment['hour'].split(':')[0])))
             
             if self.aggregator_type == 'rnn':
@@ -203,6 +213,7 @@ class UserBooleanClassifier(nn.Module):
                 aggregated_features = torch.mean(torch.stack(features), dim=0)
             
             feature_vectors.append(aggregated_features)
+        print('interfaces: ', interfaces)
 
         feature_vector = torch.stack(feature_vectors)
         return feature_vector
@@ -237,9 +248,12 @@ class UserBooleanClassifier(nn.Module):
 
         logits = self.fc(combined_features)
 
-        # for name, param in self.named_parameters():
-        #     if "embedding" in name:  # Replace "embedding" with the actual name of your embedding layer
-        #         print(f"Gradients for {name}: {param.grad}")
+        for name, param in self.named_parameters():
+            if "embedding" in name:  # Replace "embedding" with the actual name of your embedding layer
+                print(f"Gradients for {name}: {param.grad}")
+            if "fc" in name:  # Replace "embedding" with the actual name of your embedding layer
+                print(f"Gradients for {name}: {param.grad}")
+
 
         return logits
 
