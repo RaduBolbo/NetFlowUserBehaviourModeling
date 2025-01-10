@@ -143,25 +143,30 @@ class FCNNAggregator(nn.Module):
 
 
 class UserBooleanClassifier(nn.Module):
-    def __init__(self, device='cuda', input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10, aggregator_type='fcnn'):
+    #def __init__(self, device='cuda', input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10, aggregator_type='fcnn'):
+    def __init__(self, device='cuda', input_dim=256, hidden_dim=6, lstm_layers=2, long_sequence_skip=10, aggregator_type='fcnn'):
         super(UserBooleanClassifier, self).__init__()
         self.input_normalizer_long_sequence = InputNormalizer(10, device)
         self.input_normalizer_short_sequence = InputNormalizer(10, device)
         self.aggregator_type = aggregator_type
+        #self.aggregator_dim = 256 # **** intiial
+        self.aggregator_dim = 4
         if aggregator_type == 'rnn':
-            self.aggregator = RNNAggregator(50, 256, 2).to(device)
+            #self.aggregator = RNNAggregator(50, 256, 2).to(device) # original sizes
+            self.aggregator = RNNAggregator(50, self.aggregator_dim, 2).to(device)
         elif aggregator_type == 'fcnn':
-            self.aggregator = FCNNAggregator(50, 256).to(device)
+            #self.aggregator = FCNNAggregator(50, 256).to(device) # original sizes
+            self.aggregator = FCNNAggregator(6, 256).to(device)
         self.long_sequence_skip = long_sequence_skip
 
         self.lstm_long_sequence = nn.LSTM(input_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
         self.lstm_short_sequence = nn.LSTM(input_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
 
         self.fc = nn.Sequential(
-            nn.Linear(hidden_dim * 2, 256),
+            nn.Linear(hidden_dim * 2, self.aggregator_dim),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(256, 2)  # boolobean classifier
+            nn.Linear(self.aggregator_dim, 2)  # boolobean classifier
         ).to(device)
 
     # def extract_features(self, content_user, normalizer, skip): # **** IDEE: EXTRACT FEATURES PE SARITE: PE O PERIOADA MAI LUNGA, DAR CU GAURI (fie gauri de cateva frameuri fie la fiecare x frameuri se iau doar cateva evenimente)
@@ -210,8 +215,6 @@ class UserBooleanClassifier(nn.Module):
 
         #print('feature_vector1.shape: ', feature_vector1.shape)
         #print('feature_vector2.shape: ', feature_vector2.shape)
-        print('feature_vector1.shape: ',feature_vector1.shape)
-        print('feature_vector2.shape: ',feature_vector2.shape)
         feature_vector1 = feature_vector1.unsqueeze(0)  # Add batch dimension
         feature_vector2 = feature_vector2.unsqueeze(0)  # Add batch dimension
 
@@ -233,6 +236,11 @@ class UserBooleanClassifier(nn.Module):
         ], dim=1)
 
         logits = self.fc(combined_features)
+
+        # for name, param in self.named_parameters():
+        #     if "embedding" in name:  # Replace "embedding" with the actual name of your embedding layer
+        #         print(f"Gradients for {name}: {param.grad}")
+
         return logits
 
 if __name__ == "__main__":

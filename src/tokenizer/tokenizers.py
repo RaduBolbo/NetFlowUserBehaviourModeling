@@ -169,8 +169,9 @@ class DNSNameEmbedding(nn.Module):
 #         return self.embedding_layer(torch.tensor(idx))
     
 
-class PortTokenizer:
+class PortTokenizer(nn.Module):
     def __init__(self, file_path: str, embedding_dim: int = 10):
+        super(PortTokenizer, self).__init__()
         self.embedding_dim = embedding_dim
         self.unknown_port_idx = 0
 
@@ -181,9 +182,11 @@ class PortTokenizer:
         self.port_to_idx = {port: idx + 1 for idx, port in enumerate(self.ports)}  # Reserve 0 for unknown
         self.embedding_layer = nn.Embedding(len(self.ports) + 1, self.embedding_dim)
 
-    def get_embedding(self, port: int):
+    def get_embedding(self, port: int, device='cuda'):
         idx = self.port_to_idx.get(port, self.unknown_port_idx)
-        return self.embedding_layer(torch.tensor(idx))
+        port_tensor = torch.tensor(idx, dtype=torch.long).to(device)
+        return self.embedding_layer(port_tensor)
+
 
 
 def dns_to_char_indices(dns_name, char_to_idx):
@@ -192,42 +195,66 @@ def dns_to_char_indices(dns_name, char_to_idx):
     """
     return torch.tensor([char_to_idx[char] for char in dns_name], dtype=torch.long)
 
-class InterfaceEncoding:
+# class InterfaceEncoding:
+#     def __init__(self, num_interfaces, embedding_size):
+#         self.num_interfaces = num_interfaces
+#         self.embedding_size = embedding_size
+
+#         if embedding_size < num_interfaces:
+#             raise ValueError("Embedding size must be greater than or equal to the number of unique interfaces.")
+
+#     def encode(self, interface):
+#         one_hot = torch.eye(self.num_interfaces)[interface]
+#         padded = torch.nn.functional.pad(one_hot, (0, self.embedding_size - self.num_interfaces), value=0)
+#         return padded
+
+#     def batch_encode(self, interfaces):
+#         return torch.stack([self.encode(i) for i in interfaces])
+
+
+class InterfaceEncoding(nn.Module):
     def __init__(self, num_interfaces, embedding_size):
+        super(InterfaceEncoding, self).__init__()  # Initialize nn.Module
+
+        if embedding_size < 1:
+            raise ValueError("Embedding size must be greater than 0.")
+
         self.num_interfaces = num_interfaces
         self.embedding_size = embedding_size
+        self.interface_embedding = nn.Embedding(num_interfaces, embedding_size)
 
-        if embedding_size < num_interfaces:
-            raise ValueError("Embedding size must be greater than or equal to the number of unique interfaces.")
-
-    def encode(self, interface):
-        one_hot = torch.eye(self.num_interfaces)[interface]
-        padded = torch.nn.functional.pad(one_hot, (0, self.embedding_size - self.num_interfaces), value=0)
-        return padded
+    def encode(self, interface, device='cuda'):
+        interface_tensor = torch.tensor(interface, dtype=torch.long).to(device)
+        return self.interface_embedding(interface_tensor)
 
     def batch_encode(self, interfaces):
-        return torch.stack([self.encode(i) for i in interfaces])
+        interfaces_tensor = torch.tensor(interfaces, dtype=torch.long)
+        return self.interface_embedding(interfaces_tensor)
 
-
-class ProtocolEncoding:
+class ProtocolEncoding(nn.Module):
     def __init__(self, protocols, embedding_size):
+        super(ProtocolEncoding, self).__init__()
+
+        if embedding_size < 1:
+            raise ValueError("Embedding size must be greater than 0.")
+
         self.protocols = protocols
         self.embedding_size = embedding_size
         self.protocol_to_index = {protocol: i for i, protocol in enumerate(protocols)}
+        self.protocol_embedding = nn.Embedding(len(protocols), embedding_size)
 
-        if embedding_size < len(protocols):
-            raise ValueError("Embedding size must be greater than or equal to the number of unique protocols.")
-
-    def encode(self, protocol):
+    def encode(self, protocol, device='cuda'):
         if protocol not in self.protocol_to_index:
             raise ValueError(f"Unknown protocol: {protocol}")
 
-        one_hot = torch.eye(len(self.protocols))[self.protocol_to_index[protocol]]
-        padded = torch.nn.functional.pad(one_hot, (0, self.embedding_size - len(self.protocols)), value=0)
-        return padded
+        protocol_tensor = torch.tensor(self.protocol_to_index[protocol], dtype=torch.long).to(device)
+        return self.protocol_embedding(protocol_tensor)
 
-    def batch_encode(self, protocols):
-        return torch.stack([self.encode(p) for p in protocols])
+    def batch_encode(self, protocols, device='cuda'):
+        protocol_indices = [self.protocol_to_index[p] for p in protocols]
+        protocol_tensor = torch.tensor(protocol_indices, dtype=torch.long).to(device)
+        return self.protocol_embedding(protocol_tensor)
+
 
 # class InputNormalizer(nn.Module):
 #     '''
@@ -257,7 +284,7 @@ class InputNormalizerNdim(nn.Module):
         self.name_tokeinzer = DNSNameEmbedding(vocab_size=256, embedding_dim=5, hidden_dim=10)
         self.port_tokenizer = PortTokenizer(file_path=cache_file_ports)
         self.protocol_encoder = ProtocolEncoding(protocols=['TCP', 'UDP', 'ICMP'], embedding_size=10)
-        self.interface_encoder = InterfaceEncoding(num_interfaces=6, embedding_size=10)
+        self.interface_encoder = InterfaceEncoding(num_interfaces=6, embedding_size=4)
         self.dayofmonth_encoder = ProtocolEncoding(protocols=[0, 1, 2, 3, 4, 5, 6], embedding_size=10)
 
         self.packet_bins = torch.linspace(0, 1000, steps=11, device=device)  # 10 bins
@@ -402,17 +429,17 @@ class InputNormalizer(nn.Module):
         # print(hour_normalized.shape)
 
         normalized_input = torch.cat([
-            dns_embedding,
-            protocol_embedding,
-            source_port_embedding,
-            destination_port_embedding,
+            #dns_embedding,
+            #protocol_embedding,
+            #source_port_embedding,
+            #destination_port_embedding,
             input_interface_embedding,
-            output_interface_embedding,
-            normalized_packet_count.to(self.device),
-            normalized_byte_count.to(self.device),
-            day_of_week_embedding,
-            hour_normalized,
-            torch.tensor([0]).to(self.device)
+            #output_interface_embedding,
+            #normalized_packet_count.to(self.device),
+            #normalized_byte_count.to(self.device),
+            #day_of_week_embedding,
+            #hour_normalized,
+            #torch.tensor([0]).to(self.device)
         ], dim=0)
 
         #print('normalized_input.shape: ', normalized_input.shape)
