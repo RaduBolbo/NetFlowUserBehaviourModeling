@@ -130,10 +130,10 @@ class UserEmbeddingExtractor(nn.Module):
 class FCNNAggregator(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(FCNNAggregator, self).__init__()
-        self.fc1 = nn.Linear(input_dim, output_dim//2)
-        self.bn1 = nn.LayerNorm(output_dim//2)
+        self.fc1 = nn.Linear(input_dim, max(output_dim//2, 1))
+        self.bn1 = nn.LayerNorm(max(output_dim//2, 1))
         self.relu = nn.LeakyReLU()
-        self.fc2 = nn.Linear(output_dim//2, output_dim)
+        self.fc2 = nn.Linear(max(output_dim//2, 1), output_dim)
         self.bn2 = nn.LayerNorm(output_dim)
 
     def forward(self, input_vectors):
@@ -155,12 +155,13 @@ class UserBooleanClassifier(nn.Module):
         self.aggregator_type = aggregator_type
         #self.aggregator_dim = 256 # **** intiial
         self.aggregator_dim = 4 # *** itris the input_dim
+        self.aggregator_dim = 1 # *** TO DELETE
         if aggregator_type == 'rnn':
             #self.aggregator = RNNAggregator(50, 256, 2).to(device) # original sizes
             self.aggregator = RNNAggregator(50, self.aggregator_dim, 2).to(device)
         elif aggregator_type == 'fcnn':
             #self.aggregator = FCNNAggregator(50, 256).to(device) # original sizes
-            self.aggregator = FCNNAggregator(6, self.aggregator_dim).to(device)
+            self.aggregator = FCNNAggregator(self.aggregator_dim, self.aggregator_dim).to(device)
         self.long_sequence_skip = long_sequence_skip
 
         self.lstm_long_sequence = nn.LSTM(self.aggregator_dim, hidden_dim, num_layers=lstm_layers, batch_first=True, bidirectional=False).to(device)
@@ -206,11 +207,15 @@ class UserBooleanClassifier(nn.Module):
                 outputs = torch.stack(outputs) # stack them and then send them to the aggregator
                 aggregated_features = self.aggregator(outputs.float())
             elif self.aggregator_type == 'fcnn':
-                features = []
-                for output in outputs:
-                    features.append(self.aggregator(output.float())) # first send them to the agregator one at a time, then average them
+                # V1) 
+                # features = []
+                # for output in outputs:
+                #     features.append(self.aggregator(output.float())) # first send them to the agregator one at a time, then average them
                 
-                aggregated_features = torch.mean(torch.stack(features), dim=0)
+                # aggregated_features = torch.mean(torch.stack(features), dim=0)
+                
+                # V2)
+                aggregated_features = self.aggregator(torch.mean(torch.stack(outputs).float(), dim=0))
             
             feature_vectors.append(aggregated_features)
         print('interfaces: ', interfaces)

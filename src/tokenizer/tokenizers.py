@@ -225,6 +225,7 @@ class InterfaceEncoding(nn.Module):
 
     def encode(self, interface, device='cuda'):
         interface_tensor = torch.tensor(interface, dtype=torch.long).to(device)
+        return interface_tensor.unsqueeze(-1) / 6 # **** to delete
         return self.interface_embedding(interface_tensor)
 
     def batch_encode(self, interfaces):
@@ -427,6 +428,7 @@ class InputNormalizer(nn.Module):
         # print(normalized_byte_count.shape)
         # print(day_of_week_embedding.shape)
         # print(hour_normalized.shape)
+
 
         normalized_input = torch.cat([
             #dns_embedding,
