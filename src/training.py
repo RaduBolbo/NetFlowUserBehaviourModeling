@@ -1,4 +1,5 @@
 from networks.RNN_classifier import UserEmbeddingExtractor, UserBooleanClassifier
+from networks.statitics_classifier import UserBooleanClassifierStatistics
 from dataset.dataset import NetFlowDatasetClassification, NetFlowDatasetBooleanClassificator
 import torch
 import torch.nn as nn
@@ -59,6 +60,7 @@ def train_boolean_classificator(checkpoint_path=None):
 
     short_seq = 6 # half an hout
     train_dataset = NetFlowDatasetBooleanClassificator('dataset/train', sequence_length_user1=long_seq, sequence_length_user2=short_seq, examples_per_user=examples_per_user)
+    val_dataset = NetFlowDatasetBooleanClassificator('dataset/val', sequence_length_user1=long_seq, sequence_length_user2=short_seq, examples_per_user=examples_per_user)
     # train_loader = DataLoader(
     #     train_dataset,
     #     batch_size=1, 
@@ -72,9 +74,12 @@ def train_boolean_classificator(checkpoint_path=None):
     #lr = 1e-6
     #lr = 1e-7
 
-    device = 'cuda'
+    #device = 'cuda'
+    device = 'cpu'
+
     #classifier_model = UserBooleanClassifier(input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=10).to(device) # tried
-    classifier_model = UserBooleanClassifier(input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=12).to(device) # 
+    #classifier_model = UserBooleanClassifier(input_dim=256, hidden_dim=128, lstm_layers=2, long_sequence_skip=12).to(device) # 
+    classifier_model = UserBooleanClassifierStatistics().to(device) # 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(classifier_model.parameters(), lr=lr) # **** CHANGE
 
@@ -104,8 +109,9 @@ def train_boolean_classificator(checkpoint_path=None):
                 targets_list.append(target_onehot[0])
 
             batch_logits = torch.stack(logits_list)
+            #print('s shape: ', batch_logits.shape)
             one_hot_targets = torch.stack(targets_list)
-            loss = criterion(batch_logits, torch.argmax(one_hot_targets, dim=1))
+            loss = criterion(batch_logits.float(), torch.argmax(one_hot_targets, dim=1))
 
             optimizer.zero_grad()
             loss.backward()
@@ -126,10 +132,61 @@ def train_boolean_classificator(checkpoint_path=None):
         epoch_accuracy = total_correct / total_samples
         tpr = true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
         fpr = false_positive / (false_positive + true_negative) if (false_positive + true_negative) > 0 else 0
+        fnr = false_negative / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
 
         print(f"Epoch Loss: {total_loss:.4f}, Epoch Accuracy: {epoch_accuracy:.4f}")
-        print(f"TPR: {tpr:.4f}, FPR: {fpr:.4f}")
+        print(f"TPR: {tpr:.4f}, FPR: {fpr:.4f}, FNR: {fnr:.4f}")
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {(total_loss/(len(train_dataset) * examples_per_user)):.4f}")
+
+        if val_dataset is not None:
+            total_loss = 0.0
+            total_correct = 0
+            total_samples = 0
+            true_positive = 0
+            false_positive = 0
+            false_negative = 0
+            true_negative = 0
+
+            for user1_samples, user2_samples, targets in tqdm(val_dataset):
+
+                logits_list = []
+                targets_list = []
+                for user1_sample, user2_sample, target in zip(user1_samples, user2_samples, targets):
+                    logits = classifier_model(user1_sample, user2_sample)
+                    logits_list.append(logits[0])
+                    target_onehot = F.one_hot(torch.tensor([target]), num_classes=2).float().to(device)
+                    targets_list.append(target_onehot[0])
+
+                batch_logits = torch.stack(logits_list)
+                #print('s shape: ', batch_logits.shape)
+                one_hot_targets = torch.stack(targets_list)
+                loss = criterion(batch_logits.float(), torch.argmax(one_hot_targets, dim=1))
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+                predictions = torch.argmax(batch_logits, dim=1)
+                true_classes = torch.argmax(one_hot_targets, dim=1)
+                total_correct += (predictions == true_classes).sum().item()
+                total_samples += true_classes.size(0)
+
+                true_positive += ((predictions == 1) & (true_classes == 1)).sum().item()
+                false_positive += ((predictions == 1) & (true_classes == 0)).sum().item()
+                false_negative += ((predictions == 0) & (true_classes == 1)).sum().item()
+                true_negative += ((predictions == 0) & (true_classes == 0)).sum().item()
+
+            epoch_accuracy = total_correct / total_samples
+            tpr = true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+            fpr = false_positive / (false_positive + true_negative) if (false_positive + true_negative) > 0 else 0
+            fnr = false_negative / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+
+            print('VAL: ')
+            print(f"Epoch Loss: {total_loss:.4f}, Epoch Accuracy: {epoch_accuracy:.4f}")
+            print(f"TPR: {tpr:.4f}, FPR: {fpr:.4f}, FNR: {fnr:.4f}")
+            print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {(total_loss/(len(train_dataset) * examples_per_user)):.4f}")
 
         torch.save(classifier_model.state_dict(), f"models/rnn/rnn_epoch={epoch}_loss_{total_loss/(len(train_dataset) * examples_per_user)}_acc_{epoch_accuracy}.pth")
 
@@ -139,7 +196,7 @@ if __name__ == '__main__':
     # V1) The embedder approach
     #train_embedder()
 
-    #checkpoint_path = r'models\rnn\rnn_0_probably_good.pth'
+    #checkpoint_path = r'models/rnn/rnn_epoch=6_loss_0.057295625583798276_acc_0.9.pth'
     checkpoint_path = None
 
     train_boolean_classificator(checkpoint_path)
